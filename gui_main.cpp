@@ -1,7 +1,3 @@
-// gui_client.cpp
-// Klient GUI Wisielca w wxWidgets
-// Kompilacja: g++ gui_client.cpp `wx-config --cxxflags --libs` -o gui_client -pthread
-
 #include <wx/wx.h>
 #include <wx/listctrl.h>
 #include <thread>
@@ -13,7 +9,6 @@
 #include <sstream>
 #include <fcntl.h>
 #include <errno.h>
-
 
 
 struct GameState {
@@ -36,8 +31,7 @@ public:
         if (sock >= 0) close(sock);
     }
 
-private:
-    
+private:    
     wxTextCtrl* txtInput;
     wxButton* btnSend;
     wxStaticText* lblMask;    
@@ -53,7 +47,7 @@ private:
     wxButton* btnConnect;
 
 
-    // Network
+
     int sock = -1;
     std::thread netThread;
     std::thread connectThread;
