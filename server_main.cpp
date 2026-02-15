@@ -1,3 +1,5 @@
+// Uruchomienie: ./hangman_server <port>
+
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <netinet/in.h>
@@ -30,8 +32,8 @@ struct Player {
     int score = 0;
     int round_score=0;
     int lives = 0;
-    bool active = true; // dajemy false gdy gracz straci wszystkie życia albo będzie offline
-    std::string inbuf;  // bufor linii przychodzących
+    bool active = true; 
+    std::string inbuf;  
 };
 
 struct Config {
@@ -42,9 +44,9 @@ struct Config {
 };
 
 struct Game {
-    std::string word;               // lowercase [a-z]
-    std::string mask;               // '_' i litery
-    std::unordered_set<char> used;  // litery już użyte
+    std::string word;               
+    std::string mask;               
+    std::unordered_set<char> used;  
     Clock::time_point deadline;
     bool active = false;
 };
@@ -52,7 +54,6 @@ struct Game {
 static bool g_running = true;
 static void on_sigint(int) { g_running = false; }
 
-// ====== Pomocnicze I/O ======
 static bool set_reuseaddr(int fd) {
     int yes = 1;
     return setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) == 0;
@@ -77,7 +78,6 @@ static void send_line(int fd, const std::string& line) {
     (void)send_all(fd, msg);
 }
 
-// ====== Słownik ======
 static vector<string> DICT;
 static bool load_dict(const string& path, int minLen) {
     ifstream in(path);
@@ -98,7 +98,7 @@ static string random_word() {
     return DICT[dist(rng)];
 }
 
-// ====== Serwer – globalny stan (dla prostoty w jednym pliku) ======
+
 struct Server {
     int listenfd = -1;
     fd_set master{};
@@ -106,8 +106,8 @@ struct Server {
 
     Config cfg;
     Game game;
-    unordered_map<int, Player> by_fd;        // fd -> Player
-    unordered_map<uint32_t, int> fd_by_id;   // id -> fd (dla szybkiej wysyłki)
+    unordered_map<int, Player> by_fd;       
+    unordered_map<uint32_t, int> fd_by_id;   
     uint32_t nextId = 1;
 
     bool init(uint16_t port) {
@@ -130,7 +130,6 @@ struct Server {
 
     void start_round() {
 
-
         size_t ready = std::count_if(by_fd.begin(), by_fd.end(),
             [](const auto& kv) {
                 const Player& p = kv.second;
@@ -149,7 +148,6 @@ struct Server {
         game.deadline = Clock::now() + chrono::seconds(cfg.roundTimeSeconds);
         game.active = true;
 
-        //resetuje życia i punkty w danej rundzie 
         for (auto& kv : by_fd) {
             auto& pl = kv.second;
             if(pl.id != 0){
@@ -174,7 +172,7 @@ struct Server {
     }
 
     void broadcast_start() {
-        // START mask timeLeft usedLetters players_count [pid nick score lives]...
+    
         auto now = Clock::now();
         uint32_t tl = 0;
         if (game.deadline > now) tl = (uint32_t)chrono::duration_cast<chrono::seconds>(game.deadline - now).count();
@@ -184,24 +182,22 @@ struct Server {
         for (char c : game.used) used_sorted.push_back(c);
         sort(used_sorted.begin(), used_sorted.end());
         if (used_sorted.empty()) used_sorted = "-";
-        // policz graczy
+        
         size_t n = std::count_if(by_fd.begin(), by_fd.end(),[](const auto& kv) {
             return kv.second.id != 0;
         });
 
-        // składamy jedną linię
+        
         std::string line = "START " + game.mask + " " + to_string(tl) + " " + used_sorted + " " + to_string(n);
-        // dorzuć graczy
+       
         for (auto& kv : by_fd) {
             const auto& p = kv.second;
-            // uwaga: nick bez spacji (na MVP przyjmijmy takie założenie)
             line += " " + to_string(p.id) + " " + p.nick + " " + to_string(p.score) + " " + to_string(p.lives);
         }
         broadcast_all(line);
     }
 
     void send_snapshot(int fd) {
-        // to samo co START, ale do jednego gracza (np. nowo dołączony)
         auto now = Clock::now();
         uint32_t tl = 0;
         if (game.deadline > now) tl = (uint32_t)chrono::duration_cast<chrono::seconds>(game.deadline - now).count();
@@ -229,11 +225,9 @@ struct Server {
         FD_SET(cfd, &master);
         fdmax = max(fdmax, cfd);
 
-        // na MVP: dopóki nie zrobi JOIN, trzymamy pusty Player (id=0, brak nicka)
         Player p; p.fd = cfd; p.id = 0; p.active = false;
         by_fd[cfd] = std::move(p);
 
-        // powitanie
         send_line(cfd, "HELLO. Enter: JOIN <nick>  to join the game :)");
     }
 
@@ -253,7 +247,6 @@ struct Server {
                 broadcast_all("LEFT " + to_string(pid)+" "+nic);
             }
         } else {
-            // fd nieznane
             close(fd);
             FD_CLR(fd, &master);
         }
@@ -268,7 +261,6 @@ struct Server {
 
     void handle_join(int fd, const string& nickRaw) {
         string nick = nickRaw;
-        // walidacja: bez spacji, ascii, 1..20 znaków
         if (nick.empty() || nick.size() > 20) { send_line(fd, "JOIN_REJECT bad_nick (1-20 letters only)"); return; }
         for (char ch : nick) {
             if (ch == ' ') { send_line(fd, "JOIN_REJECT bad_nick (space)"); return; }
@@ -276,24 +268,22 @@ struct Server {
         if (nick_taken(nick)) { send_line(fd, "JOIN_REJECT nick_taken"); return; }
 
         auto it = by_fd.find(fd);
-        if (it == by_fd.end()) return; // fd już padło?
+        if (it == by_fd.end()) return; 
 
         Player& p = it->second;
         if (p.id != 0) { send_line(fd, "JOIN_REJECT already_joined"); return; }
 
         p.id = nextId++;
         p.nick = nick;
-        p.score = 0;                  // nowy gracz startuje z 0 punktów
-        p.lives = cfg.livesPerPlayer; // pełne życie w aktualnej rundzie
+        p.score = 0;                 
+        p.lives = cfg.livesPerPlayer;
         p.active = true;
 
         fd_by_id[p.id] = fd;
 
         send_line(fd, "JOIN_ACCEPT " + to_string(p.id));
-        // nowy gracz dostaje snapshot i może od razu grać
         send_snapshot(fd);
 
-        // wszyscy widzą info o wejściu
         broadcast_all("JOINED " + to_string(p.id)+"." + p.nick);
 
         if(!game.active){
@@ -327,10 +317,8 @@ struct Server {
             return;
         }
 
-        // zarejestruj użycie (chroni przed duplikacją przy wyścigu)
         game.used.insert(letter);
 
-        // sprawdź w słowie
         vector<int> pos;
         for (int i = 0; i < (int)game.word.size(); ++i) {
             if (game.word[i] == letter) {
@@ -340,19 +328,17 @@ struct Server {
         }
 
         if (!pos.empty()) {
-            // punkt +1 dla zgłaszającego (niezależnie od liczby wystąpień)
             it->second.score += 1;
             it->second.round_score+=1;
-            // Broadcast: ACCEPT <letter> <pid> <newMask> <positions_count> p1 p2 ...
+
             string line = string("ACCEPT ") + letter + " " + to_string(pid) + " " + game.mask + " " + to_string(pos.size());
             for (int p : pos) line += " " + to_string(p);
             broadcast_all(line);
 
-            // po każdej akcji dobrze też wysłać szybki stan graczy
             broadcast_players_state();
 
         } else {
-            // Zły strzał → -1 życie TYLKO dla zgłaszającego
+
             it->second.lives = max(0, it->second.lives - 1);
             if (it->second.lives == 0) it->second.active = false;
 
@@ -361,7 +347,6 @@ struct Server {
             if (it->second.lives == 0) {
                 broadcast_all("ELIM " + to_string(pid));
             }
-            // odśwież lives/scores u wszystkich
             broadcast_players_state();
         }
     }
@@ -417,10 +402,10 @@ struct Server {
                 auto top1 = winner.front();
                 broadcast_all(string("Round won by: ") + to_string(top1->id)+"."+top1->nick+" with score: "+ to_string(top1->round_score));
             }
-            start_round(); // nowa runda
+            start_round(); 
             return;
         }
-        // warunek: ostatni aktywny
+
         int joinCount = 0;
         int aliveCount = 0;
         for (auto& kv : by_fd) {
@@ -449,15 +434,10 @@ struct Server {
     }
 
     void handle_line(int fd, const string& lineRaw) {
-        // Prosty parsing: KOMENDA [arg...]
-        // JOIN <nick>
-        // GUESS <letter>
-        // QUIT
+
         string line = lineRaw;
-        // usuń \r\n
         while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) line.pop_back();
         if (line.empty()) return;
-        // split pierwsze słowo
         size_t sp = line.find(' ');
         string cmd = (sp == string::npos ? line : line.substr(0, sp));
         string arg = (sp == string::npos ? "" : line.substr(sp+1));
@@ -481,7 +461,6 @@ struct Server {
         ssize_t n = ::recv(fd, buf, sizeof(buf), 0);
         if (n <= 0) {
             if (n == 0 || (n < 0 && errno != EWOULDBLOCK && errno != EAGAIN)) {
-                // rozłączenie
                 drop_client(fd);
             }
             return;
@@ -504,12 +483,9 @@ struct Server {
     }
 
     void loop() {
-        // start pierwszej rundy po odpaleniu
         start_round();
-
         while (g_running) {
             fd_set readfds = master;
-            // timeout do sprawdzania końca rundy
             timeval tv{1,0};
             int r = select(fdmax+1, &readfds, nullptr, nullptr, &tv);
             if (r < 0) {
@@ -525,11 +501,9 @@ struct Server {
                     recv_and_process(fd);
                 }
             }
-            // po każdym cyklu sprawdź warunki końca rundy
             maybe_end_round();
         }
 
-        // sprzątaj
         for (int fd = 0; fd <= fdmax; ++fd) {
             if (FD_ISSET(fd, &master)) close(fd);
         }
@@ -543,7 +517,6 @@ int main(int argc, char** argv) {
     if (argc > 1) port = (uint16_t)stoi(argv[1]);
 
     Config cfg;
-    // Możesz wczytać config z pliku — dla MVP używamy domyślnych wartości
     if (!load_dict(cfg.dictPath, cfg.minWordLen)) {
         cerr << "Failed to load dictionary: " << cfg.dictPath << "\n";
         cerr << "Put an english_words.txt (one lowercase word per line)\n";
