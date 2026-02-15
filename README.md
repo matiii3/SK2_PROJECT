@@ -1,5 +1,7 @@
 # Wisielec 
-Opis
+## Opis
+
+
 Gracz łączy się do serwera wpisując ip oraz port. 
 
 Gracz podaje swój nick (jeśli nick jest zajęty, serwer prosi o podanie innego).
