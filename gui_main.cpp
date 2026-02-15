@@ -1,3 +1,7 @@
+// gui_client.cpp
+// Klient GUI Wisielca w wxWidgets
+// Kompilacja: g++ gui_client.cpp `wx-config --cxxflags --libs` -o gui_client -pthread
+
 #include <wx/wx.h>
 #include <wx/listctrl.h>
 #include <thread>
@@ -9,6 +13,7 @@
 #include <sstream>
 #include <fcntl.h>
 #include <errno.h>
+
 
 
 struct GameState {
@@ -31,7 +36,8 @@ public:
         if (sock >= 0) close(sock);
     }
 
-private:    
+private:
+    
     wxTextCtrl* txtInput;
     wxButton* btnSend;
     wxStaticText* lblMask;    
@@ -52,7 +58,7 @@ private:
     std::thread netThread;
     std::thread connectThread;
     std::atomic<bool> running{true};
-    std::string incompleteLine; // bufor na urwane pakiety
+    std::string incompleteLine; 
     bool joined = false;
     std::string my_name = "";
     std::string used_letters;
@@ -209,7 +215,7 @@ private:
     }
 
 
-    void OnSend(wxCommandEvent& event) {
+    void OnSend(wxCommandEvent&) {
         wxString val = txtInput->GetValue();
         if (val.IsEmpty()) return;
 
@@ -237,7 +243,50 @@ private:
         txtInput->SetFocus();
     }
 
-  
+    void NetworkLoop() {
+    char buffer[4096];
+    while (running) {
+        // 1. Odbieramy surowe bajty z sieci
+        int n = recv(sock, buffer, sizeof(buffer), 0);
+        
+        if (n < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) continue; // Tylko dla non-blocking
+            break; 
+        }
+        if (n == 0) break; // Serwer zamknął połączenie
+
+        // 2. Doklejamy to, co przyszło, do naszego "worka" na dane
+        incompleteLine.append(buffer, n);
+
+        // 3. Sprawdzamy, czy w worku jest przynajmniej jedna pełna linia
+        size_t pos;
+        while ((pos = incompleteLine.find('\n')) != std::string::npos) {
+            // Wycinamy linię do znaku \n
+            std::string line = incompleteLine.substr(0, pos);
+            
+            // Czyścimy śmieci typu \r (Windows compatibility)
+            if (!line.empty() && line.back() == '\r') {
+                line.pop_back();
+            }
+
+            // Usuwamy przetworzoną linię z bufora
+            incompleteLine.erase(0, pos + 1);
+
+            // 4. Przekazujemy gotową, kompletną linię do GUI
+            if (!line.empty()) {
+                this->CallAfter([this, line]() {
+                    HandleServerMessage(line);
+                });
+            }
+        }
+    }
+    
+    // Obsługa rozłączenia
+    this->CallAfter([this]() {
+        lblStatus->SetLabel("Połączenie utracone.");
+        joined = false;
+    });
+}
     
 
     
@@ -426,12 +475,12 @@ private:
         if (netThread.joinable())
             netThread.join();
     }
-    void OnExitGame(wxCommandEvent& event)
+    void OnExitGame(wxCommandEvent& )
     {
         DisconnectFromServer();
         Destroy();   // zamyka okno
     }
-    void OnWindowClose(wxCloseEvent& event)
+    void OnWindowClose(wxCloseEvent&)
     {
         DisconnectFromServer();
         Destroy();
