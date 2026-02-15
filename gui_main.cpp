@@ -1,6 +1,5 @@
-// gui_client.cpp
-// Klient GUI Wisielca w wxWidgets
-// Kompilacja: g++ gui_client.cpp `wx-config --cxxflags --libs` -o gui_client -pthread
+
+// ./hangmam_client
 
 #include <wx/wx.h>
 #include <wx/listctrl.h>
